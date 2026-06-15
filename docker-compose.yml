@@ -1,0 +1,38 @@
+# Tier-1 stack: single `docker compose up`, no cloud accounts.
+# Mirrors the era-labs-tools deployment shape (swap postgres for Cloud SQL there).
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_PASSWORD: era
+      POSTGRES_DB: era
+    ports:
+      - "55433:5432"   # host:container — host 5432 often taken by a local Postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  memory-api:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      MEMORY_TIER: "1"
+      MEMORY_PG_DSN: "postgresql://postgres:era@postgres:5432/era"
+      MEMORY_BEARER_TOKEN: "change-me"
+      # Point at any OpenAI-compatible embedding endpoint (a vLLM/GPU service on
+      # era-labs-tools, OpenAI, LiteLLM, Ollama's shim). Omit to use the dev hash embedder.
+      # MEMORY_EMBEDDING_URL: "http://embeddings:8000/v1"
+      # MEMORY_EMBEDDING_MODEL: "bge-m3"
+      # MEMORY_EMBEDDING_DIMENSIONS: "1024"
+      MEMORY_EMBEDDING_DIMENSIONS: "64"
+    ports:
+      - "8080:8080"
+
+volumes:
+  pgdata:

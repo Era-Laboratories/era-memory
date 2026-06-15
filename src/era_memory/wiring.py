@@ -60,10 +60,71 @@ def build_memory(
     if settings.tier == 0:
         return _build_tier0(settings, db_path, embedder, kms_key_path, clock)
     if settings.tier == 1:
-        raise NotImplementedError("Tier 1 (Postgres+pgvector) adapters land in M2.")
+        raise ConfigurationError("Tier 1 requires async wiring — use build_memory_async().")
     if settings.tier == 2:
         raise NotImplementedError("Tier 2 (Milvus/vLLM/Redis) adapters land in M3.")
     raise ConfigurationError(f"Unknown MEMORY_TIER: {settings.tier}")
+
+
+async def build_memory_async(
+    tier: Optional[int] = None,
+    settings: Optional[Settings] = None,
+    *,
+    dsn: Optional[str] = None,
+    db_path: Optional[str] = None,
+    embedder: Optional[Embedder] = None,
+    kms_key_path: Optional[str] = None,
+    reset: bool = False,
+    clock: Callable[[], float] = time.time,
+) -> Memory:
+    """Async composition root (needed for Tier 1's connection pool). Tier 0 delegates sync."""
+    settings = settings or Settings.from_env()
+    if tier is not None:
+        settings.tier = tier
+
+    if settings.tier == 0:
+        return _build_tier0(settings, db_path, embedder, kms_key_path, clock)
+    if settings.tier == 1:
+        return await _build_tier1(settings, dsn, embedder, kms_key_path, reset, clock)
+    if settings.tier == 2:
+        raise NotImplementedError("Tier 2 (Milvus/vLLM/Redis) adapters land in M3.")
+    raise ConfigurationError(f"Unknown MEMORY_TIER: {settings.tier}")
+
+
+async def _build_tier1(
+    settings: Settings,
+    dsn: Optional[str],
+    embedder: Optional[Embedder],
+    kms_key_path: Optional[str],
+    reset: bool,
+    clock: Callable[[], float],
+) -> Memory:
+    if not dsn:
+        raise ConfigurationError("Tier 1 requires a Postgres DSN.")
+    from .adapters.postgres import open_pg_stores
+
+    # Production passes an OpenAICompatibleEmbedder; default keeps the tier runnable in dev.
+    embedder = embedder or InMemoryEmbedder(
+        dim=settings.embedding_dimensions, model_id=settings.embedding_model
+    )
+    record_store, vector_store, backend = await open_pg_stores(
+        dsn, embedder.dimensions, embedder.model_id, reset=reset
+    )
+    mem = Memory(
+        record_store=record_store,
+        vector_store=vector_store,
+        embedder=embedder,
+        extractor=HeuristicExtractor(),
+        settings=settings,
+        kms=_persistent_local_kms(kms_key_path),
+        auth=NoopAuth(),
+        blob_store=InMemoryBlobStore(),
+        telemetry=NoopTelemetry(),
+        clock=clock,
+    )
+    mem.queue = InProcessQueue(consumer=mem.encode_consumer)
+    mem._pg_backend = backend  # type: ignore[attr-defined]  # for explicit close in tests
+    return mem
 
 
 def _build_tier0(

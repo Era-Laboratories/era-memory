@@ -28,14 +28,37 @@ Spec: [era-memory-light-spec.md](era-memory-light-spec.md). Gates are automated 
 failure rolls back the record — no orphan); model/dim guard; persistence across reopen;
 persisted KMS key round-trips. **72 tests pass, ruff clean.**
 
-### Known limitation (next up)
-The default Tier-0 embedder is a **deterministic hashed bag-of-words stand-in** — it proves
-the storage/search plumbing but is **not semantic**. The real Tier-0 ONNX embedder
-(`fastembed`, 384-d) is the immediate next task; it slots behind the `Embedder` port with no
-other changes. Wire via `build_memory(tier=0, db_path=..., embedder=OnnxEmbedder())`.
+## ✅ M2 — Tier-1 Postgres + pgvector (era-labs-tools shape) — DONE
+- Postgres adapters (`adapters/postgres/`): `memories` (+ tsvector/`ts_rank` lexical) and
+  `memory_vectors` (`halfvec` + HNSW cosine) in ONE database, sharing one asyncpg
+  connection per unit-of-work → dual-write **collapses to a single transaction**
+  (`co_transactional = True`). `halfvec` side-steps pgvector's 2000-dim cap (locked at
+  `halfvec(2048)` for prod parity; tests use small dims). Embeddings bound as string
+  literals cast to `halfvec` (no codec dep). `(model, dim)` guard + ON CONFLICT upsert.
+- **OpenAI-compatible embedder** (`adapters/openai/`) — the production embedding path;
+  points at any `/embeddings` endpoint (OpenAI, a vLLM/GPU service on era-labs-tools,
+  LiteLLM, Ollama). Matryoshka truncate+normalize client-side.
+- Static **bearer-token auth** (`adapters/auth.py`); async wiring (`build_memory_async`).
+- Lean **HTTP surface** (`app.py`, `[server]` extra): `/health`, `/ready`,
+  `POST /api/memories`, `POST /api/memories/search` (era-core-shaped responses).
+- **`Dockerfile` + `docker-compose.yml`** — the era-labs-tools deployment shape
+  (swap Postgres for Cloud SQL there).
+
+**Gates green:** the **same conformance suite** passes against pgvector; Tier-1 collapse
+atomicity (vector failure rolls back the record — no orphan); user isolation; embedder
+truncation; bearer auth; HTTP smoke. **Validated against a live `docker compose` stack**:
+create → both `memories` and `memory_vectors` get the row in one transaction, hybrid search
+ranks correctly, 401 on bad token, cross-user isolation holds.
+**104 tests pass with Postgres (81 + 4 skipped without it), ruff clean.**
+
+### Known limitation
+The default dev embedder is a **deterministic hashed bag-of-words stand-in** (offline,
+non-semantic). Production uses the OpenAI-compatible embedder against a real endpoint; the
+true-offline-laptop ONNX embedder (`fastembed`, 384-d) is a later follow-up (M1.1) and slots
+behind the `Embedder` port with no other change.
 
 ## ⏭ Next
-- **M1.1:** ONNX (`fastembed`) embedder adapter + offline acceptance test with a real model.
-- **M2:** Tier 1 — Postgres + pgvector (`halfvec(2048)`), OpenAI-compatible embedder,
-  bearer auth, docker-compose; deploy target = internal tools on `era-labs-tools` GCP.
-- **M3:** Tier 2 — Milvus/vLLM/Redis adapters + the API-compatibility golden test.
+- **M1.1:** ONNX (`fastembed`) embedder for the true-offline-laptop tier.
+- **Deploy:** push the image to `era-labs-tools` (Cloud Run + Cloud SQL pgvector), point at a
+  real embedding endpoint, set a real `MEMORY_BEARER_TOKEN`.
+- **M3:** Tier 2 — Milvus/vLLM/Redis adapters + the API-compatibility golden test vs era-core.
