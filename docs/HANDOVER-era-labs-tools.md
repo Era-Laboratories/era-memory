@@ -148,8 +148,13 @@ Milestone status: `docs/PROGRESS.md`.
 
 ## 9. Where the code is
 
-The repository is currently a standalone git repo at the local path
-`/Users/alexanderollman/era-memory` (branch `main`). **Remote/clone URL: _to be filled in
-once pushed_** — see the maintainer (Alexander Ollman) for access. Note the name `era-memory`
-currently also refers to the in-tree era-core service; this standalone repo is the portable
-extraction and will take the canonical name once the incumbent is renamed.
+**Repository:** https://github.com/Era-Laboratories/era-memory (private — request access from
+Alexander Ollman).
+
+```bash
+git clone https://github.com/Era-Laboratories/era-memory.git
+```
+
+Naming note: the **public-facing portable** memory system is `Era-Laboratories/era-memory`
+(this repo). The **internal era-core service** was renamed to `Era-Laboratories/era-mneme`;
+its runtime namespace/service in the cluster remain `era-memory*` and are unchanged.

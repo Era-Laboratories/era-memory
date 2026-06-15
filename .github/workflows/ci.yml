@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_PASSWORD: era
+          POSTGRES_DB: era
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: pip install -e ".[dev,sqlite,postgres,openai,server,encryption]"
+      - name: Lint
+        run: ruff check src tests
+      - name: Test (incl. Postgres-backed conformance)
+        env:
+          MEMORY_TEST_PG_DSN: postgresql://postgres:era@localhost:5432/era
+        run: pytest -q
