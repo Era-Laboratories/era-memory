@@ -6,10 +6,14 @@ RecordStore (``memories`` + tsvector) and VectorStore (``memory_vectors`` with
 collapses into a single transaction (``co_transactional = True``) — eliminating era-core's
 Postgres-then-Milvus fail-fast 503 orphan path.
 
-``halfvec(2048)`` is the locked production dimension (Qwen3-VL truncated); halfvec indexes
-to 4000 dims, side-stepping pgvector's 2000-dim cap on the plain ``vector`` type. Embeddings
-are bound as string literals cast to ``halfvec`` (no codec dependency). Lexical leg is native
-``tsvector``/``ts_rank`` (no extension needed; RRF consumes rank, not raw score).
+The vector column is ``halfvec(dim)`` where ``dim`` is the embedder's output dimension,
+passed in at ``connect()`` — it is **not** a fixed number. A deployment picks any dim its
+embedder produces and is then pinned to that ``(model, dim)`` for the store's lifetime (the
+signature guard below enforces it; see ``docs/adr/0001``). ``halfvec`` indexes up to 4000
+dims, side-stepping pgvector's 2000-dim cap on the plain ``vector`` type, so larger models
+(e.g. a Qwen3 family model truncated to 2048) fit; smaller models (384/768/1024) work equally.
+Embeddings are bound as string literals cast to ``halfvec`` (no codec dependency). Lexical leg
+is native ``tsvector``/``ts_rank`` (no extension needed; RRF consumes rank, not raw score).
 
 Needs the ``[postgres]`` extra (asyncpg). Requires the ``vector`` extension in the database.
 """

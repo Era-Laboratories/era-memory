@@ -10,8 +10,9 @@ from __future__ import annotations
 
 import os
 import time
+import warnings
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Optional, Union
 
 from .adapters.memory import (
     HeuristicExtractor,
@@ -25,9 +26,14 @@ from .adapters.memory import (
     NoopTelemetry,
 )
 from .config import Settings
+from .embedders import resolve_embedder
 from .errors import ConfigurationError
 from .memory import Memory
 from .ports import Embedder
+
+# What may be passed as `embedder=`: a concrete Embedder, the string "auto" (resolve + download
+# a local model if needed), or None (resolve-if-cached/endpoint, else the dev stand-in).
+EmbedderArg = Union[Embedder, str, None]
 
 
 def _persistent_local_kms(key_path: Optional[str]) -> LocalKMS:
@@ -44,12 +50,71 @@ def _persistent_local_kms(key_path: Optional[str]) -> LocalKMS:
     return LocalKMS(master_key=key)
 
 
+def _reconcile_embedding_dim(settings: Settings, embedder: Optional[Embedder]) -> None:
+    """A store is locked to one (model, dim) for its whole life (see docs/adr/0001).
+
+    When an explicit embedder is supplied it is the source of truth for (model, dim).
+    If the operator *also* pinned MEMORY_EMBEDDING_DIMENSIONS to a conflicting value,
+    fail fast here with a clear message instead of later at the first write/reopen.
+    """
+    if embedder is None:
+        return
+    env_dim = os.environ.get("MEMORY_EMBEDDING_DIMENSIONS")
+    if env_dim is not None and int(env_dim) != embedder.dimensions:
+        raise ConfigurationError(
+            f"Embedder dimension {embedder.dimensions} != MEMORY_EMBEDDING_DIMENSIONS "
+            f"{env_dim}. A store is pinned to one (model, dim) for its lifetime — pick a "
+            "single source of truth: unset MEMORY_EMBEDDING_DIMENSIONS, or set it to "
+            f"{embedder.dimensions}."
+        )
+    # Keep settings consistent with the live embedder for downstream/telemetry.
+    settings.embedding_dimensions = embedder.dimensions
+    settings.embedding_model = embedder.model_id
+
+
+_DEV_EMBEDDER_WARNING = (
+    "era-memory is using the non-semantic dev embedder (hashed bag-of-words) — search will "
+    "only match on shared literal words. For real semantic retrieval: run `era-memory setup` "
+    "to download a local model, pass build_memory(embedder='auto'), or set MEMORY_EMBEDDING_URL "
+    "to an embeddings endpoint. See INSTALL.md."
+)
+
+
+def _select_embedder(settings: Settings, embedder: EmbedderArg) -> Embedder:
+    """Resolve `embedder=` into a concrete Embedder (see EmbedderArg / resolve_embedder)."""
+    if isinstance(embedder, Embedder):
+        _reconcile_embedding_dim(settings, embedder)
+        return embedder
+    if embedder == "auto":
+        resolved = resolve_embedder(settings, allow_download=True)
+        if resolved is None:
+            raise ConfigurationError(
+                "embedder='auto' needs the [localembed] extra: "
+                "pip install 'era-memory[localembed]' (or set MEMORY_EMBEDDING_URL)."
+            )
+        _reconcile_embedding_dim(settings, resolved)
+        return resolved
+    if embedder is not None:
+        raise ConfigurationError(
+            f"embedder must be an Embedder, 'auto', or None; got {embedder!r}"
+        )
+    # None: use a configured endpoint or an already-cached local model — never download here.
+    resolved = resolve_embedder(settings, allow_download=False)
+    if resolved is not None:
+        _reconcile_embedding_dim(settings, resolved)
+        return resolved
+    warnings.warn(_DEV_EMBEDDER_WARNING, stacklevel=3)
+    return InMemoryEmbedder(
+        dim=settings.embedding_dimensions, model_id=settings.embedding_model
+    )
+
+
 def build_memory(
     tier: Optional[int] = None,
     settings: Optional[Settings] = None,
     *,
     db_path: Optional[str] = None,
-    embedder: Optional[Embedder] = None,
+    embedder: EmbedderArg = None,
     kms_key_path: Optional[str] = None,
     clock: Callable[[], float] = time.time,
 ) -> Memory:
@@ -72,7 +137,7 @@ async def build_memory_async(
     *,
     dsn: Optional[str] = None,
     db_path: Optional[str] = None,
-    embedder: Optional[Embedder] = None,
+    embedder: EmbedderArg = None,
     kms_key_path: Optional[str] = None,
     reset: bool = False,
     clock: Callable[[], float] = time.time,
@@ -94,7 +159,7 @@ async def build_memory_async(
 async def _build_tier1(
     settings: Settings,
     dsn: Optional[str],
-    embedder: Optional[Embedder],
+    embedder: EmbedderArg,
     kms_key_path: Optional[str],
     reset: bool,
     clock: Callable[[], float],
@@ -103,10 +168,8 @@ async def _build_tier1(
         raise ConfigurationError("Tier 1 requires a Postgres DSN.")
     from .adapters.postgres import open_pg_stores
 
-    # Production passes an OpenAICompatibleEmbedder; default keeps the tier runnable in dev.
-    embedder = embedder or InMemoryEmbedder(
-        dim=settings.embedding_dimensions, model_id=settings.embedding_model
-    )
+    # Production passes an OpenAICompatibleEmbedder; "auto"/cached/endpoint also resolve here.
+    embedder = _select_embedder(settings, embedder)
     record_store, vector_store, backend = await open_pg_stores(
         dsn, embedder.dimensions, embedder.model_id, reset=reset
     )
@@ -130,13 +193,11 @@ async def _build_tier1(
 def _build_tier0(
     settings: Settings,
     db_path: Optional[str],
-    embedder: Optional[Embedder],
+    embedder: EmbedderArg,
     kms_key_path: Optional[str],
     clock: Callable[[], float],
 ) -> Memory:
-    embedder = embedder or InMemoryEmbedder(
-        dim=settings.embedding_dimensions, model_id=settings.embedding_model
-    )
+    embedder = _select_embedder(settings, embedder)
 
     if db_path:
         from .adapters.sqlite import open_sqlite_stores
