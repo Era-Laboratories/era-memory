@@ -1,0 +1,13 @@
+# Era-INTERNAL dependencies — NOT part of the public PyPI package.
+#
+# These are the private Era observability packages that used to be the `[era]` optional extra.
+# PyPI forbids direct git-URL dependencies in published metadata, so they were moved out of
+# pyproject.toml. The era-memory runtime never imports them (telemetry defaults to a no-op
+# adapter); they are only needed for Era's own deployments that wire the real OTel adapter.
+#
+# Usage (inside Era, with access to the private repos):
+#   pip install era-memory[tier1]
+#   pip install -r requirements-internal.txt
+
+era-telemetry[fastapi] @ git+https://github.com/Era-Laboratories/era-telemetry-schema@v0.7.1#subdirectory=packages/python
+era-version-schema[fastapi] @ git+https://github.com/Era-Laboratories/era-version-schema@v0.12.0#subdirectory=packages/python

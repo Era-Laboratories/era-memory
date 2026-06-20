@@ -112,9 +112,12 @@ mirror era-core's so a future Tier-2 deployment can be API-compatible.
    and index are created at the chosen dimension on first start, and the store refuses to open
    with a different `(model, dim)`. Changing the embedding model later = **re-embed into a new
    database**, not a config flip. Pick the model/dim once.
-   - **pgvector `halfvec` indexes up to 4000 dims** (the plain `vector` type caps at 2000).
-     The locked production dimension is `halfvec(2048)`. If you want a different model, keep
-     the indexed dimension ≤ 4000.
+   - **The dimension is not fixed — it is whatever your embedder emits.** The column is
+     `halfvec(dim)`, set from the embedder at startup. Any model's native (or MRL-truncated)
+     dimension works; pick the store + model + dim for your deployment size from the table in
+     the README ("Choosing a store, embedder, and dimension").
+   - **pgvector `halfvec` indexes up to 4000 dims** (the plain `vector` type caps at 2000), so
+     larger models (e.g. a Qwen3 family model truncated to 2048) fit; just keep the dim ≤ 4000.
 
 3. **Auth is a static bearer token, not full JWT/Oathkeeper.** Fine for an internal tool
    behind the org perimeter; do not treat it as end-user identity. `user_id` comes from the

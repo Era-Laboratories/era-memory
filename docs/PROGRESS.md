@@ -32,9 +32,11 @@ persisted KMS key round-trips. **72 tests pass, ruff clean.**
 - Postgres adapters (`adapters/postgres/`): `memories` (+ tsvector/`ts_rank` lexical) and
   `memory_vectors` (`halfvec` + HNSW cosine) in ONE database, sharing one asyncpg
   connection per unit-of-work → dual-write **collapses to a single transaction**
-  (`co_transactional = True`). `halfvec` side-steps pgvector's 2000-dim cap (locked at
-  `halfvec(2048)` for prod parity; tests use small dims). Embeddings bound as string
-  literals cast to `halfvec` (no codec dep). `(model, dim)` guard + ON CONFLICT upsert.
+  (`co_transactional = True`). The column is `halfvec(dim)` — `dim` comes from the embedder
+  at `connect()`, not a fixed number — so any model's dim works; `halfvec` indexes up to 4000
+  dims, side-stepping pgvector's 2000-dim cap (so 2048+ models fit). A deployment is pinned to
+  one `(model, dim)` for the store's life (`(model, dim)` guard; see `docs/adr/0001`).
+  Embeddings bound as string literals cast to `halfvec` (no codec dep). ON CONFLICT upsert.
 - **OpenAI-compatible embedder** (`adapters/openai/`) — the production embedding path;
   points at any `/embeddings` endpoint (OpenAI, a vLLM/GPU service on era-labs-tools,
   LiteLLM, Ollama). Matryoshka truncate+normalize client-side.
@@ -51,14 +53,28 @@ create → both `memories` and `memory_vectors` get the row in one transaction, 
 ranks correctly, 401 on bad token, cross-user isolation holds.
 **104 tests pass with Postgres (81 + 4 skipped without it), ruff clean.**
 
-### Known limitation
+### Note on the default embedder
 The default dev embedder is a **deterministic hashed bag-of-words stand-in** (offline,
-non-semantic). Production uses the OpenAI-compatible embedder against a real endpoint; the
-true-offline-laptop ONNX embedder (`fastembed`, 384-d) is a later follow-up (M1.1) and slots
-behind the `Embedder` port with no other change.
+non-semantic) — it keeps `build_memory()` runnable with zero setup. For real retrieval use a
+real embedder (now shipped, see M1.1); a bare `build_memory()` emits a one-time warning when it
+falls back to the stand-in.
+
+## ✅ M1.1 — Offline ONNX embedder (`fastembed`) + zero-config setup — DONE
+- `FastEmbedEmbedder` (`adapters/fastembed/`): ONNX/CPU, lazy model load, Matryoshka
+  truncate+normalize, behind the `Embedder` port with no other change. Curated model registry
+  (`bge-small` 384 / `mxbai-large` 1024), readiness-sentinel cache detection.
+- **Embedder resolver** (`embedders.py`): endpoint env → already-cached local model →
+  opt-in download → dev stand-in. Cache detection is file-only and construction is lazy, so a
+  bare `build_memory()` stays backend-free until search runs (import-isolation gate still green).
+- **`era-memory` CLI** (`__main__.py`): `setup` (interactive HF download w/ model choice,
+  `--yes`/`--model`/`--force` for CI) and `status`. `build_memory(embedder="auto")` downloads
+  on demand; default `build_memory()` only uses an already-cached model (no surprise downloads).
+
+**Gates green:** resolver precedence; invalid-arg rejection; dev-fallback warning; import
+isolation holds with `fastembed` installed + a model cached; gated network test downloads
+`bge-small` and confirms a real semantic signal (`ERA_MEMORY_TEST_FASTEMBED=1`).
 
 ## ⏭ Next
-- **M1.1:** ONNX (`fastembed`) embedder for the true-offline-laptop tier.
 - **Deploy:** push the image to `era-labs-tools` (Cloud Run + Cloud SQL pgvector), point at a
   real embedding endpoint, set a real `MEMORY_BEARER_TOKEN`.
 - **M3:** Tier 2 — Milvus/vLLM/Redis adapters + the API-compatibility golden test vs era-core.

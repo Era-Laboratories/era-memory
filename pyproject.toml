@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "era-memory"
-version = "0.1.0.dev0"
+version = "0.1.0"
 description = "Portable, tier-selected memory system (record + vector + hybrid search) for agents and apps. Ports & adapters; runs from a laptop SQLite file up to a full Milvus/vLLM cluster."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -31,11 +31,10 @@ redis = ["redis[hiredis]>=5.0"]
 milvus = ["pymilvus>=2.6"]
 vllm = ["httpx>=0.27"]
 gcp = ["google-cloud-kms>=3.0"]
-# Private Era observability stack — referenced ONLY here, never in base.
-era = [
-    "era-telemetry[fastapi] @ git+https://github.com/Era-Laboratories/era-telemetry-schema@v0.7.1#subdirectory=packages/python",
-    "era-version-schema[fastapi] @ git+https://github.com/Era-Laboratories/era-version-schema@v0.12.0#subdirectory=packages/python",
-]
+# NOTE: the private Era observability stack (era-telemetry / era-version-schema) used to live
+# here as an [era] extra, but PyPI forbids direct git-URL dependencies in published metadata.
+# Those pins now live in requirements-internal.txt for Era-internal installs; the public
+# package never references them. The runtime imports neither (telemetry defaults to a no-op).
 
 # --- HTTP service surface (optional; the library is usable in-process without it) ---
 server = ["fastapi>=0.110", "uvicorn[standard]>=0.27", "pydantic>=2.6", "orjson>=3.9"]
@@ -46,9 +45,8 @@ tier1 = ["era-memory[postgres,openai,redis,server]"]
 
 dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "ruff>=0.4", "mypy>=1.9"]
 
-[tool.hatch.metadata]
-# Required because the optional [era] extra references private git deps directly.
-allow-direct-references = true
+[project.scripts]
+era-memory = "era_memory.__main__:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/era_memory"]
@@ -56,6 +54,11 @@ packages = ["src/era_memory"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+filterwarnings = [
+    # The dev-embedder notice is intentional for real users; keep it out of test noise.
+    # (pytest.warns still asserts it where tests check for it explicitly.)
+    "ignore:era-memory is using the non-semantic dev embedder:UserWarning",
+]
 
 [tool.ruff]
 line-length = 100
