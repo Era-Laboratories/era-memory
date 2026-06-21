@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "era-memory"
-version = "0.1.0"
+version = "0.1.1"
 description = "Portable, tier-selected memory system (record + vector + hybrid search) for agents and apps. Ports & adapters; runs from a laptop SQLite file up to a full Milvus/vLLM cluster."
 readme = "README.md"
 requires-python = ">=3.10"
