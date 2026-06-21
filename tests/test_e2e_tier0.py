@@ -19,6 +19,19 @@ async def test_store_and_search_relevance(memory):
     assert res.latency_ms >= 0.0
 
 
+async def test_search_result_carries_experience_id(memory):
+    await memory.store(
+        MemoryRecord(
+            user_id="u1",
+            content="Ada prefers dark roast coffee",
+            experience_id="exp-abc",
+        )
+    )
+    res = await memory.search(SearchRequest(user_id="u1", query="what coffee does Ada drink"))
+    assert res.results
+    assert res.results[0].experience_id == "exp-abc"
+
+
 async def test_user_isolation(memory):
     await memory.store(MemoryRecord(user_id="alice", content="alice loves espresso"))
     await memory.store(MemoryRecord(user_id="bob", content="bob loves espresso"))

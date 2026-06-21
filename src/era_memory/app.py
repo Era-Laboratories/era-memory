@@ -109,6 +109,8 @@ def create_app(memory: Optional[Memory] = None) -> FastAPI:
                     "score": r.score,
                     "memory_type": r.memory_type.value,
                     "source_type": r.source_type,
+                    "experience_id": r.experience_id,
+                    "metadata": r.metadata,
                 }
                 for r in resp.results
             ],

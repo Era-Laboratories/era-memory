@@ -101,5 +101,6 @@ def _to_result(rec: MemoryRecord, score: float) -> SearchResult:
         confidence=rec.confidence,
         source_type="memory",
         created_at=rec.created_at,
+        experience_id=rec.experience_id,
         metadata=rec.metadata,
     )
