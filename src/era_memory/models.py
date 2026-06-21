@@ -112,6 +112,7 @@ class SearchResult:
     confidence: float = 1.0
     source_type: str = "memory"  # "memory" | "raw_conversation" (deep search)
     created_at: float = 0.0
+    experience_id: Optional[str] = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
 

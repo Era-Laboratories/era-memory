@@ -45,5 +45,24 @@ def test_create_and_search(client):
     assert body["strategy"] == "hybrid"
 
 
+def test_search_returns_experience_id_and_metadata(client):
+    r = client.post(
+        "/api/memories",
+        json={
+            "content": "dark roast coffee",
+            "experience_id": "exp-123",
+            "metadata": {"source_event": "evt-42", "initiative": "argus"},
+        },
+        headers=_AUTH,
+    )
+    assert r.status_code == 200
+
+    s = client.post("/api/memories/search", json={"query": "coffee"}, headers=_AUTH)
+    assert s.status_code == 200
+    result = s.json()["results"][0]
+    assert result["experience_id"] == "exp-123"
+    assert result["metadata"] == {"source_event": "evt-42", "initiative": "argus"}
+
+
 def test_empty_content_422(client):
     assert client.post("/api/memories", json={"content": ""}, headers=_AUTH).status_code == 422
