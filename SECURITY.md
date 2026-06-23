@@ -18,7 +18,7 @@ button (repository → **Security** tab → **Report a vulnerability**). This op
 advisory visible only to you and the maintainers. Private vulnerability reporting is enabled on
 this repository.
 
-If you cannot use GitHub, email **security@era.computer**.
+If you cannot use GitHub, email **hello@era.world**.
 
 Please include:
 
