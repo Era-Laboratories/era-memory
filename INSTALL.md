@@ -14,8 +14,14 @@ account, cloud project, or private registry required. For the architecture overv
 
 ## 2. Install
 
-> **Not yet published to PyPI.** Install from source for now. (`pip install era-memory` will
-> work once the first release is cut.)
+From [PyPI](https://pypi.org/project/era-memory/):
+
+```bash
+python -m venv .venv && . .venv/bin/activate
+pip install "era-memory[tier0]"
+```
+
+Or from source (for development or the latest `main`):
 
 ```bash
 git clone https://github.com/Era-Laboratories/era-memory.git
