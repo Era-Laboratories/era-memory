@@ -17,14 +17,33 @@ and one `MEMORY_TIER` knob selects an adapter set.
 The base package has **zero third-party dependencies** — no mandatory cloud account, GPU, or
 private registry to run Tier 0/1. Every backend is an optional extra.
 
-## Install
-
-> **Not yet on PyPI.** Until the first release is published, install from source. See
-> [`INSTALL.md`](INSTALL.md) for the full guide (extras, embedder setup, service deploy).
+## Quick start
 
 ```bash
-git clone https://github.com/Era-Laboratories/era-memory.git && cd era-memory
-pip install -e ".[tier0]"        # laptop/offline; swap for [tier1] for the Postgres service
+pip install "era-memory[tier0,localembed]"   # library + on-disk store + local embedder
+era-memory setup                             # one-time: download a small embedding model from HF
+```
+
+```python
+import asyncio
+from era_memory import build_memory, MemoryRecord, SearchRequest
+
+async def main():
+    mem = build_memory(tier=0, db_path="memory.db")        # records + vectors in one SQLite file
+    await mem.store(MemoryRecord(user_id="u1", content="Ada prefers dark roast coffee"))
+    res = await mem.search(SearchRequest(user_id="u1", query="what does Ada drink?"))
+    print(res.results[0].content)                          # -> Ada prefers dark roast coffee
+
+asyncio.run(main())
+```
+
+Local, offline, no API key. For a hosted service, embedder options, and deploys, see
+[`INSTALL.md`](INSTALL.md).
+
+## Install
+
+```bash
+pip install "era-memory[tier0]"   # laptop/offline; use [tier1] for the Postgres + HTTP service
 ```
 
 The Tier 2 observability stack uses **private** Era packages and is **not** part of the public
@@ -39,9 +58,9 @@ SQLite, and Postgres/pgvector backends; Tier 1 has been validated end-to-end aga
 See [`docs/PROGRESS.md`](docs/PROGRESS.md) for the milestone detail and
 [`docs/era-memory-light-spec.md`](docs/era-memory-light-spec.md) for the full spec.
 
-**Not yet available (tracked for the public release):** PyPI package (install from source for
-now); Tier 2 (Milvus/vLLM/Redis) adapters. *(The offline ONNX embedder is now shipped — see the
-embedder note above and `era-memory setup`.)*
+**Published:** `era-memory` is on [PyPI](https://pypi.org/project/era-memory/) (`pip install
+era-memory`). The offline ONNX embedder is shipped (`era-memory setup`).
+**Not yet available:** Tier 2 (Milvus/vLLM/Redis) adapters.
 
 > **Deploying inside Era Labs Tools?** Start with
 > [`docs/HANDOVER-era-labs-tools.md`](docs/HANDOVER-era-labs-tools.md). Everyone else: see
