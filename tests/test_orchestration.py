@@ -46,7 +46,8 @@ def _stores():
 
 async def test_dual_write_happy_path():
     rs, vs = _stores()
-    stored = await dual_write(rs, vs, _rec())
+    stored, was_inserted = await dual_write(rs, vs, _rec())
+    assert was_inserted is True
     fetched = await rs.fetch_by_ids("u1", [stored.id])
     assert fetched and fetched[0].id == stored.id
     assert await vs.search("u1", [1.0, 0.0], 5, _filters())

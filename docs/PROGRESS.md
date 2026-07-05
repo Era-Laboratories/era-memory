@@ -74,6 +74,38 @@ falls back to the stand-in.
 isolation holds with `fastembed` installed + a model cached; gated network test downloads
 `bge-small` and confirms a real semantic signal (`ERA_MEMORY_TEST_FASTEMBED=1`).
 
+## ✅ 0.1.2 — production hardening (three live-incident fixes) — DONE
+Discovered operating era-memory behind era-argus (2026-07-02):
+
+- **Bounded ONNX Runtime thread pool.** The offline `fastembed`/ORT embedder spawned an
+  unbounded intra-/inter-op thread pool; under a 1-CPU GKE CFS quota a large-model
+  (`mxbai-large`) inference starved the process — including FastAPI probe responses — and
+  kubelet SIGTERMed a healthy pod. `FastEmbedEmbedder` (and the `download_model` warmup) now
+  pass a bounded `threads` to fastembed's `TextEmbedding` (→ `SessionOptions.intra_op_num_threads`
+  / `inter_op_num_threads`). New env `MEMORY_EMBED_THREADS`, default `2` — small enough that
+  probe responses stay schedulable under the quota. The k8s cpu:2 + relaxed-probe change was
+  the mitigation; this is the durable fix.
+- **`content_hash` is now populated.** The `memories.content_hash` column + `ix_mem_user_hash`
+  index existed in both backends but no writer set them — every row was NULL, and an external
+  dedup pass grouping on the column mass-collapsed distinct memories. `MemoryRecord.__post_init__`
+  now stamps `content_hash = SHA-256 hex of the exact content` whenever the caller leaves it
+  None, so every writer (store path + encoder pipeline) persists it in both the sqlite and
+  postgres adapters. **Backfill:** no migration rewrites existing rows — **pre-0.1.2 rows keep
+  `content_hash = NULL`**; only rows written at ≥0.1.2 carry the hash.
+- **Write-time idempotency on `POST /api/memories`.** A client retry after a timeout (server
+  completed after the client aborted) previously created an exact-duplicate episode. Now that
+  `content_hash` is populated, both adapters' existing `(user_id, content_hash)` dedup on
+  ACTIVE rows engages: a duplicate create returns the existing first record instead of
+  inserting. The HTTP response keeps the same `{id, memory_type, source_type}` shape and adds
+  `deduplicated: true` **only** when it hit (absent on a fresh insert). Dedup keys on
+  `(user_id, content_hash)` **only** — a byte-identical body with a **different `experience_id`**
+  still collapses onto the first record, which is preserved untouched (the recall value of a
+  byte-identical body twice is nil regardless of the experience tag).
+
+**Gates green:** ruff clean; full pytest suite (thread param plumbed to the constructor +
+env override; `content_hash` populated and persisted across backends; idempotent create
+returns the existing id + `deduplicated`; same-content-different-user is **not** deduped).
+
 ## ⏭ Next
 - **Deploy:** push the image to `era-labs-tools` (Cloud Run + Cloud SQL pgvector), point at a
   real embedding endpoint, set a real `MEMORY_BEARER_TOKEN`.

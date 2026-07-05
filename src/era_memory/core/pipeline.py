@@ -67,7 +67,7 @@ async def encode_session(
             created_at=now,
             updated_at=now,
         )
-        stored = await dual_write(record_store, vector_store, record)
+        stored, _ = await dual_write(record_store, vector_store, record)
         written.append(stored)
         seen_embeddings.append(emb)
 

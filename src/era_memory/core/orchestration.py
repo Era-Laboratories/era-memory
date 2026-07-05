@@ -29,8 +29,13 @@ async def dual_write(
     record: MemoryRecord,
     *,
     detail: str = DETAIL_MEMORY,
-) -> MemoryRecord:
-    """Insert a record then (if newly inserted and embedded) its vector. See module docstring."""
+) -> tuple[MemoryRecord, bool]:
+    """Insert a record then (if newly inserted and embedded) its vector.
+
+    Returns ``(stored, was_inserted)``. ``was_inserted`` is False when the RecordStore's
+    content-hash dedup returned an existing ACTIVE row (write-time idempotency) — the
+    vector write is skipped in that case. See the module docstring for the topology split.
+    """
     async with record_store.unit_of_work() as uow:
         stored, was_inserted = await record_store.insert_memory(uow, record)
         # Single-store tiers: write the vector INSIDE the uow so the whole thing is atomic
@@ -44,7 +49,7 @@ async def dual_write(
             await vector_store.insert([stored.to_vector_record()])
         except VectorStoreWriteError as e:
             raise DualWriteVectorError(stored, detail) from e
-    return stored
+    return stored, was_inserted
 
 
 async def dual_write_batch(
