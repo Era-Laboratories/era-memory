@@ -73,8 +73,17 @@ def create_app(memory: Optional[Memory] = None) -> FastAPI:
 
     @app.post("/api/memories")
     async def create_memory(body: CreateMemoryBody, user_id: str = Depends(_current_user)):
+        """Create a memory (write-time idempotent).
+
+        Response shape: ``{id, memory_type, source_type}``. If an ACTIVE memory already
+        exists for this ``(user_id, content_hash)`` — e.g. a client retry after a timeout —
+        the existing (first) record is returned untouched and an extra ``deduplicated: true``
+        field is added; it is absent on a fresh insert. Dedup keys on ``(user_id,
+        content_hash)`` only, so a byte-identical body with a different ``experience_id``
+        still collapses onto the first record.
+        """
         mem: Memory = app.state.memory
-        stored = await mem.store(
+        stored, deduplicated = await mem.store_with_dedup(
             MemoryRecord(
                 user_id=user_id,
                 content=body.content,
@@ -85,7 +94,14 @@ def create_app(memory: Optional[Memory] = None) -> FastAPI:
                 metadata=body.metadata,
             )
         )
-        return {"id": stored.id, "memory_type": stored.memory_type.value, "source_type": "memory"}
+        resp: dict[str, Any] = {
+            "id": stored.id,
+            "memory_type": stored.memory_type.value,
+            "source_type": "memory",
+        }
+        if deduplicated:
+            resp["deduplicated"] = True
+        return resp
 
     @app.post("/api/memories/search")
     async def search_memories(body: SearchBody, user_id: str = Depends(_current_user)):

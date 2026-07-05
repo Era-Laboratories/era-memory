@@ -57,14 +57,37 @@ class Memory:
         self._clock = clock
 
     async def store(self, record: MemoryRecord) -> MemoryRecord:
-        """Embed (if needed), stamp time, and dual-write a single memory."""
+        """Embed (if needed), stamp time, and dual-write a single memory.
+
+        Returns the stored record. When an ACTIVE memory already exists for
+        ``(user_id, content_hash)`` the existing record is returned untouched (write-time
+        idempotency); use :meth:`store_with_dedup` to also learn whether that happened.
+        """
+        stored, _ = await self._store(record)
+        return stored
+
+    async def store_with_dedup(self, record: MemoryRecord) -> tuple[MemoryRecord, bool]:
+        """Like :meth:`store`, but also reports whether the write was deduplicated.
+
+        Returns ``(stored, deduplicated)``. ``deduplicated`` is True when an ACTIVE memory
+        already existed for ``(user_id, content_hash)`` and that first record was returned
+        untouched instead of inserting a duplicate (the store's ``ix_mem_user_hash`` index).
+        Dedup keys on ``(user_id, content_hash)`` only — a byte-identical body with a
+        different ``experience_id`` still collapses onto the first record.
+        """
+        return await self._store(record)
+
+    async def _store(self, record: MemoryRecord) -> tuple[MemoryRecord, bool]:
         now = self._clock()
         if not record.created_at:
             record.created_at = now
             record.updated_at = now
         if record.embedding is None:
             record.embedding = (await self.embedder.embed([record.content]))[0]
-        return await dual_write(self.record_store, self.vector_store, record)
+        stored, was_inserted = await dual_write(
+            self.record_store, self.vector_store, record
+        )
+        return stored, not was_inserted
 
     async def search(self, request: SearchRequest) -> SearchResponse:
         t0 = self._clock()

@@ -57,6 +57,21 @@ SUPPORTED_MODELS: dict[str, ModelSpec] = {
 
 DEFAULT_MODEL_KEY = "bge-small"
 
+# ONNX Runtime spawns an intra-/inter-op thread pool sized to the host's CPU count. Under a
+# constrained CFS quota (e.g. a 1-CPU GKE pod) that pool oversubscribes the quota: a single
+# large-model inference monopolizes the process and starves everything else on the event
+# loop — including FastAPI liveness/readiness probes — so kubelet SIGTERMs a healthy pod.
+# Bounding the pool keeps probe responses schedulable. fastembed forwards ``threads`` to
+# ``SessionOptions.intra_op_num_threads`` / ``inter_op_num_threads`` (grounded against
+# fastembed docs). Override with MEMORY_EMBED_THREADS.
+DEFAULT_EMBED_THREADS = 2
+
+
+def _embed_threads() -> int:
+    """Bounded ORT thread count for the local embedder (env ``MEMORY_EMBED_THREADS``)."""
+    raw = os.environ.get("MEMORY_EMBED_THREADS")
+    return int(raw) if raw is not None else DEFAULT_EMBED_THREADS
+
 
 def default_cache_dir() -> Path:
     """Where models + readiness sentinels live. Overridable via ERA_MEMORY_MODEL_DIR."""
@@ -105,16 +120,23 @@ def _require_fastembed():
     return TextEmbedding
 
 
-def download_model(spec: ModelSpec, cache_dir: Optional[Path] = None) -> Path:
+def download_model(
+    spec: ModelSpec, cache_dir: Optional[Path] = None, *, threads: Optional[int] = None
+) -> Path:
     """Fetch ``spec`` from Hugging Face into the cache and write a readiness sentinel.
 
     Materializes the model by running one embed so the ONNX weights are fully fetched, then
-    records ``<key>.ready`` so :func:`is_cached` can detect it offline afterwards.
+    records ``<key>.ready`` so :func:`is_cached` can detect it offline afterwards. The
+    warmup embed runs with a bounded ORT thread pool (see :data:`DEFAULT_EMBED_THREADS`).
     """
     cache_dir = cache_dir or default_cache_dir()
     cache_dir.mkdir(parents=True, exist_ok=True)
     TextEmbedding = _require_fastembed()
-    model = TextEmbedding(model_name=spec.fastembed_name, cache_dir=str(cache_dir))
+    model = TextEmbedding(
+        model_name=spec.fastembed_name,
+        cache_dir=str(cache_dir),
+        threads=threads if threads is not None else _embed_threads(),
+    )
     # Force a real forward pass so the download is complete before we mark it ready.
     list(model.embed(["warmup"]))
     _sentinel(cache_dir, spec).write_text(
@@ -132,9 +154,12 @@ class FastEmbedEmbedder(Embedder):
         *,
         cache_dir: Optional[Path] = None,
         dimensions: Optional[int] = None,
+        threads: Optional[int] = None,
     ) -> None:
         self._spec = spec
         self._cache_dir = cache_dir or default_cache_dir()
+        # Bound the ORT thread pool so probe responses stay schedulable under a CPU quota.
+        self._threads = threads if threads is not None else _embed_threads()
         if dimensions is not None and dimensions > spec.dimensions:
             raise ValueError(
                 f"requested dim {dimensions} exceeds {spec.fastembed_name}'s native "
@@ -155,7 +180,9 @@ class FastEmbedEmbedder(Embedder):
         if self._model is None:
             TextEmbedding = _require_fastembed()
             self._model = TextEmbedding(
-                model_name=self._spec.fastembed_name, cache_dir=str(self._cache_dir)
+                model_name=self._spec.fastembed_name,
+                cache_dir=str(self._cache_dir),
+                threads=self._threads,
             )
         return self._model
 

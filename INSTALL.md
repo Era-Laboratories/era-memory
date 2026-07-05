@@ -165,8 +165,15 @@ Configure via environment variables:
 | `MEMORY_EMBEDDING_DIMENSIONS` | with URL | Output dim; must match the model and stay constant for the DB's life |
 | `MEMORY_EMBEDDING_API_KEY` | if endpoint needs it | Bearer key forwarded to the embedding endpoint |
 | `MEMORY_DB_PATH` | Tier 0 only | SQLite file path when running the app at Tier 0 |
+| `MEMORY_EMBED_THREADS` | local embedder only | ONNX Runtime thread-pool cap for the offline `[localembed]` embedder. Default `2` — bounded so a large-model inference cannot starve FastAPI probe responses under a CPU (CFS) quota. |
 
 Routes: `GET /health`, `GET /ready`, `POST /api/memories`, `POST /api/memories/search`.
+
+`POST /api/memories` is write-time idempotent: if an ACTIVE memory already exists for the
+caller's `(user_id, content_hash)` (e.g. a client retry after a timeout), the existing
+first record is returned untouched with an extra `deduplicated: true` field (absent on a
+fresh insert). Dedup keys on `(user_id, content_hash)` only — a byte-identical body with a
+different `experience_id` still collapses onto the first record.
 
 ```bash
 TOKEN="change-me"

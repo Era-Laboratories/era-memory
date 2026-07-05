@@ -9,6 +9,7 @@ identical so Tier 2 can stay API-compatible.
 from __future__ import annotations
 
 import enum
+import hashlib
 import uuid
 from dataclasses import dataclass, field
 from typing import Any, Optional
@@ -48,6 +49,12 @@ class MemoryRecord:
     topics: list[str] = field(default_factory=list)
     category: Optional[str] = None
     temporal_anchor: Optional[str] = None
+    # SHA-256 hex digest of the exact ``content`` string. Auto-populated in
+    # ``__post_init__`` when the caller leaves it None, so every writer persists it
+    # (both the sqlite and postgres adapters store it under ``ix_mem_user_hash`` on
+    # ``(user_id, content_hash)``). It is the key for write-time idempotency: an insert
+    # whose ``(user_id, content_hash)`` already has an ACTIVE row returns that row
+    # untouched instead of creating a duplicate. Pre-0.1.2 rows may hold NULL.
     content_hash: Optional[str] = None
     session_id: Optional[str] = None
     source_memory_id: Optional[str] = None
@@ -57,6 +64,15 @@ class MemoryRecord:
     updated_at: float = 0.0
     last_accessed_at: float = 0.0
     access_count: int = 0
+
+    def __post_init__(self) -> None:
+        # Populate content_hash for dedup / write-time idempotency when the caller did
+        # not supply one. SHA-256 hex of the exact content string — deterministic, so a
+        # retried or byte-identical write collapses onto the first record. Records
+        # reconstructed from a store pass their stored hash explicitly (or None for
+        # pre-0.1.2 rows), so this never overwrites persisted state.
+        if self.content_hash is None:
+            self.content_hash = hashlib.sha256(self.content.encode("utf-8")).hexdigest()
 
     def to_vector_record(self) -> "VectorRecord":
         return VectorRecord(

@@ -66,3 +66,17 @@ def test_search_returns_experience_id_and_metadata(client):
 
 def test_empty_content_422(client):
     assert client.post("/api/memories", json={"content": ""}, headers=_AUTH).status_code == 422
+
+
+def test_duplicate_create_returns_deduplicated_flag(client):
+    body = {"content": "retry after timeout"}
+    first = client.post("/api/memories", json=body, headers=_AUTH)
+    assert first.status_code == 200
+    assert "deduplicated" not in first.json()  # fresh insert: field absent
+
+    second = client.post("/api/memories", json=body, headers=_AUTH)
+    assert second.status_code == 200
+    j = second.json()
+    assert j["deduplicated"] is True
+    assert j["id"] == first.json()["id"]  # same record returned, non-breaking shape
+    assert j["source_type"] == "memory"

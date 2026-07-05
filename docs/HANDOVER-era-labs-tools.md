@@ -99,6 +99,7 @@ mirror era-core's so a future Tier-2 deployment can be API-compatible.
 | `MEMORY_EMBEDDING_MODEL` | 1 | Embedding model name sent to the endpoint. |
 | `MEMORY_EMBEDDING_DIMENSIONS` | all | Stored/indexed vector dim. **Must stay constant for a DB's life** (see §6). |
 | `MEMORY_EMBEDDING_API_KEY` | 1 | Bearer key for the embedding endpoint, if required. |
+| `MEMORY_EMBED_THREADS` | local embedder | ONNX Runtime thread-pool cap for the offline `[localembed]` embedder. Default `2` — bounded so inference cannot starve FastAPI probe responses under a 1-CPU CFS quota. |
 | `MEMORY_RRF_K`, `MEMORY_RRF_SEMANTIC_WEIGHT`, `MEMORY_RRF_LEXICAL_WEIGHT`, `MEMORY_RECENCY_HALF_LIFE_DAYS`, `MEMORY_DEDUP_THRESHOLD` | all | Ranking/dedup tuning. Defaults match era-core. |
 
 ## 6. The three things that will bite you — read this
