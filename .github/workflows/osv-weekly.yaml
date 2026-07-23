@@ -1,0 +1,22 @@
+name: OSV weekly re-scan
+
+# ERA-6694: full recursive OSV re-scan of every dependency manifest in the
+# repo against the current OSV database. The PR gate (osv-scan) is
+# path-filtered to dependency-changing PRs, so THIS job is what catches CVEs
+# published against deps we already ship. Advisory: findings land in the job
+# log + run artifacts; nothing blocks. The advisory->required flip is ERA-6688.
+
+on:
+  schedule:
+    - cron: "18 6 * * 1" # Mondays 06:18 UTC
+  workflow_dispatch: {}
+
+jobs:
+  osv-scan:
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    uses: Era-Laboratories/meta-ci-actions/.github/workflows/osv-scanner.yaml@v0
+    with:
+      fail-on-vuln: false
