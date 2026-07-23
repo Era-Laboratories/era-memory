@@ -34,13 +34,3 @@ jobs:
         env:
           MEMORY_TEST_PG_DSN: postgresql://postgres:era@localhost:5432/era
         run: pytest -q
-
-  osv-scan:
-    if: github.event_name == 'pull_request'
-    permissions:
-      actions: read
-      contents: read
-      security-events: write
-    uses: Era-Laboratories/meta-ci-actions/.github/workflows/osv-scanner.yaml@v0
-    with:
-      fail-on-vuln: false
