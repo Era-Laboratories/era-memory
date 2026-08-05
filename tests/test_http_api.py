@@ -80,3 +80,56 @@ def test_duplicate_create_returns_deduplicated_flag(client):
     assert j["deduplicated"] is True
     assert j["id"] == first.json()["id"]  # same record returned, non-breaking shape
     assert j["source_type"] == "memory"
+
+
+def _create(client, content="dark roast coffee"):
+    r = client.post("/api/memories", json={"content": content}, headers=_AUTH)
+    assert r.status_code == 200
+    return r.json()["id"]
+
+
+def test_delete_archives_by_default(client):
+    memory_id = _create(client)
+    r = client.delete(f"/api/memories/{memory_id}", headers=_AUTH)
+    assert r.status_code == 200
+    assert r.json() == {"id": memory_id, "deleted": True, "purged": False}
+    # Archived: search no longer surfaces it.
+    s = client.post("/api/memories/search", json={"query": "coffee"}, headers=_AUTH)
+    assert s.json()["results"] == []
+
+
+def test_delete_with_purge_erases_the_row(client):
+    memory_id = _create(client)
+    r = client.delete(f"/api/memories/{memory_id}?purge=true", headers=_AUTH)
+    assert r.status_code == 200
+    assert r.json()["purged"] is True
+    # Gone, not archived — a second purge finds nothing.
+    assert client.delete(f"/api/memories/{memory_id}?purge=true", headers=_AUTH).status_code == 404
+
+
+def test_purge_reaches_an_already_archived_memory(client):
+    # The Argus redaction path hits this: a memory soft-deleted earlier still
+    # holds its content, and erasure has to be able to finish the job.
+    memory_id = _create(client)
+    assert client.delete(f"/api/memories/{memory_id}", headers=_AUTH).status_code == 200
+    assert (
+        client.delete(f"/api/memories/{memory_id}?purge=true", headers=_AUTH).status_code
+        == 200
+    )
+
+
+def test_delete_unknown_id_is_404(client):
+    assert client.delete("/api/memories/nope", headers=_AUTH).status_code == 404
+
+
+def test_delete_requires_authentication(client):
+    assert client.delete("/api/memories/anything").status_code == 401
+
+
+def test_delete_cannot_reach_another_owner_s_memory(client):
+    memory_id = _create(client)
+    other = {"Authorization": "Bearer test-token", "X-User-Id": "u2"}
+    # Indistinguishable from a nonexistent id, so the route cannot be used to
+    # probe which ids exist.
+    assert client.delete(f"/api/memories/{memory_id}", headers=other).status_code == 404
+    assert client.get("/health").status_code == 200

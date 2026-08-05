@@ -42,6 +42,22 @@ class RecordStore(abc.ABC):
     async def soft_delete(self, user_id: str, memory_id: str) -> bool:
         """Authoritative delete (archive). Returns True if a row was affected."""
 
+    @abc.abstractmethod
+    async def purge(self, user_id: str, memory_id: str) -> bool:
+        """
+        Irreversible delete: remove the row and its content entirely.
+
+        ``soft_delete`` archives — the record stops being searchable but its
+        ``content`` stays in the store. That is the right default (recoverable,
+        keeps referential history), but it is not sufficient for erasure: a
+        caller told to forget something, whether by a person or by a regulator,
+        needs the bytes gone.
+
+        Unlike ``soft_delete`` this applies to records in ANY status, so a
+        previously archived record can still be purged. Returns True if a row
+        was removed.
+        """
+
     async def update_access(self, user_id: str, ids: list[str]) -> None:
         """Optional: bump access_count/last_accessed_at. Default no-op."""
         return None

@@ -122,6 +122,11 @@ class InMemoryRecordStore(RecordStore):
         rec.status = "archived"
         return True
 
+    async def purge(self, user_id, memory_id):
+        # Any status, not just active: an already-archived record still holds
+        # its content, and purge exists precisely to remove that.
+        return self._by_user.get(user_id, {}).pop(memory_id, None) is not None
+
 
 # --------------------------------------------------------------------------- VectorStore
 

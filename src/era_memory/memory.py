@@ -11,7 +11,7 @@ import time
 from typing import Callable, Optional
 
 from .config import Settings
-from .core.orchestration import dual_write, soft_delete
+from .core.orchestration import dual_write, purge as purge_record, soft_delete
 from .core.pipeline import encode_session
 from .core.search import hybrid_search
 from .models import MemoryRecord, SearchRequest, SearchResponse, SessionPayload
@@ -127,3 +127,7 @@ class Memory:
 
     async def delete(self, user_id: str, memory_id: str) -> bool:
         return await soft_delete(self.record_store, self.vector_store, user_id, memory_id)
+
+    async def purge(self, user_id: str, memory_id: str) -> bool:
+        """Irreversibly remove a memory: the row itself, not just its status."""
+        return await purge_record(self.record_store, self.vector_store, user_id, memory_id)
