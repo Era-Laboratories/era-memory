@@ -232,6 +232,20 @@ class PgRecordStore(RecordStore):
             )
         return [(r["id"], r["score"]) for r in rows]
 
+    async def purge(self, user_id, memory_id):
+        """Delete the row and its vector outright, in one transaction."""
+        async with self._b.pool.acquire() as c:
+            async with c.transaction():
+                # No status predicate: an archived row still holds its content.
+                status = await c.execute(
+                    "DELETE FROM memories WHERE user_id=$1 AND id=$2",
+                    user_id, memory_id,
+                )
+                affected = status.endswith("1")
+                if affected:
+                    await c.execute("DELETE FROM memory_vectors WHERE id=$1", memory_id)
+                return affected
+
     async def soft_delete(self, user_id, memory_id):
         async with self._b.pool.acquire() as c:
             async with c.transaction():

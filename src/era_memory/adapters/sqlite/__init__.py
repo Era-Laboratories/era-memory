@@ -221,6 +221,27 @@ class SqliteRecordStore(RecordStore):
         # bm25 is lower-is-better; negate so higher-is-better (order already best-first).
         return [(i, -s) for i, s in rows]
 
+    async def purge(self, user_id: str, memory_id: str) -> bool:
+        """Delete the row outright, plus its FTS and vector rows, in one txn."""
+        async with self._b.lock:
+            conn = self._b.conn
+            conn.execute("BEGIN")
+            try:
+                # No status predicate: an archived row still holds its content.
+                cur = conn.execute(
+                    "DELETE FROM memories WHERE user_id=? AND id=?",
+                    (user_id, memory_id),
+                )
+                affected = cur.rowcount > 0
+                if affected:
+                    conn.execute("DELETE FROM memories_fts WHERE id=?", (memory_id,))
+                    conn.execute("DELETE FROM vec_memories WHERE id=?", (memory_id,))
+                conn.execute("COMMIT")
+                return affected
+            except BaseException:
+                conn.execute("ROLLBACK")
+                raise
+
     async def soft_delete(self, user_id: str, memory_id: str) -> bool:
         async with self._b.lock:
             conn = self._b.conn

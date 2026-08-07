@@ -94,3 +94,26 @@ async def soft_delete(
     except Exception:  # noqa: BLE001 - best-effort, mirrors era-core's swallow-and-warn
         pass
     return deleted
+
+
+async def purge(
+    record_store: RecordStore,
+    vector_store: VectorStore,
+    user_id: str,
+    memory_id: str,
+) -> bool:
+    """
+    Irreversible erasure: the record row goes, not just its status.
+
+    Deliberately NOT best-effort on the vector leg, unlike ``soft_delete``. A
+    swallowed vector failure there is harmless — the record is archived, so
+    search filters it out regardless. Here the record is GONE, so an orphaned
+    vector is a dangling embedding of content the caller was told no longer
+    exists. Co-transactional adapters (sqlite, postgres) already remove both in
+    one transaction and their ``delete`` call is then a no-op; for split stores
+    the raise surfaces the inconsistency instead of hiding it.
+    """
+    deleted = await record_store.purge(user_id, memory_id)
+    if deleted:
+        await vector_store.delete([memory_id])
+    return deleted

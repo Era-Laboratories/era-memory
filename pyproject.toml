@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "era-memory"
-version = "0.1.2"
+version = "0.1.3"
 description = "Portable, tier-selected memory system (record + vector + hybrid search) for agents and apps. Ports & adapters; runs from a laptop SQLite file up to a full Milvus/vLLM cluster."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -43,7 +43,13 @@ server = ["fastapi>=0.110", "uvicorn[standard]>=0.27", "pydantic>=2.6", "orjson>
 tier0 = ["era-memory[sqlite,localembed]"]
 tier1 = ["era-memory[postgres,openai,redis,server]"]
 
-dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "ruff>=0.4", "mypy>=1.9"]
+# ruff is PINNED to a minor range on purpose. It was `>=0.4`, which meant CI
+# resolved whatever ruff existed on the day it ran: main last passed on
+# 2026-07-05 against ~0.12 and would FAIL today against 0.16.1, which added
+# rules (RUF100 re-evaluation, UP045) that flag 96 pre-existing findings. An
+# unpinned linter makes the gate a function of the calendar rather than of the
+# code. Adopting the 0.16 ruleset is real work and belongs in its own PR.
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "ruff>=0.15,<0.16", "mypy>=1.9"]
 
 [project.scripts]
 era-memory = "era_memory.__main__:main"

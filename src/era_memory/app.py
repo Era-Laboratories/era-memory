@@ -3,7 +3,8 @@ Optional HTTP surface (FastAPI). The library is fully usable in-process without 
 the app exists for standalone deployment (e.g. era-labs-tools Cloud Run / GKE).
 
 Needs the ``[server]`` extra. Routes mirror era-core's shapes so Tier 2 can stay
-API-compatible: POST /api/memories, POST /api/memories/search, GET /health, GET /ready.
+API-compatible: POST /api/memories, POST /api/memories/search,
+DELETE /api/memories/{id}, GET /health, GET /ready.
 """
 
 from __future__ import annotations
@@ -102,6 +103,38 @@ def create_app(memory: Optional[Memory] = None) -> FastAPI:
         if deduplicated:
             resp["deduplicated"] = True
         return resp
+
+    @app.delete("/api/memories/{memory_id}")
+    async def delete_memory(
+        memory_id: str,
+        purge: bool = False,
+        user_id: str = Depends(_current_user),
+    ):
+        """
+        Delete one of the caller's memories.
+
+        Two modes, because "delete" means two different things to two different
+        callers:
+
+        - default (``purge=false``) — ARCHIVE. The record stops being returned by
+          search but its content stays in the store, recoverable and auditable.
+        - ``purge=true`` — ERASE. The row is removed outright. Use when the
+          caller has been asked to forget the content, not merely to stop
+          surfacing it; there is no recovery.
+
+        Scoped to the authenticated ``user_id``: another owner's memory is
+        indistinguishable from a nonexistent one (404), so the endpoint cannot
+        be used to probe for ids.
+        """
+        mem: Memory = app.state.memory
+        deleted = (
+            await mem.purge(user_id, memory_id)
+            if purge
+            else await mem.delete(user_id, memory_id)
+        )
+        if not deleted:
+            raise HTTPException(status_code=404, detail="memory not found")
+        return {"id": memory_id, "deleted": True, "purged": purge}
 
     @app.post("/api/memories/search")
     async def search_memories(body: SearchBody, user_id: str = Depends(_current_user)):

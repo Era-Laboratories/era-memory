@@ -63,6 +63,36 @@ async def test_soft_delete_removes_from_reads(record_store):
     assert await record_store.soft_delete("u1", rec.id) is False
 
 
+async def test_purge_removes_the_row_entirely(record_store):
+    rec = _rec(content_hash="purge-me")
+    async with record_store.unit_of_work() as uow:
+        await record_store.insert_memory(uow, rec)
+    assert await record_store.purge("u1", rec.id) is True
+    assert await record_store.fetch_by_ids("u1", [rec.id]) == []
+    assert await record_store.lexical_search("u1", "coffee", SearchFilters(), 10) == []
+    # Purging again is a no-op — the row is gone, not merely hidden.
+    assert await record_store.purge("u1", rec.id) is False
+
+
+async def test_purge_reaches_an_already_archived_row(record_store):
+    # soft_delete leaves the content in the store; purge is what erases it, so
+    # it must not carry soft_delete's status='active' predicate.
+    rec = _rec(content_hash="archived-then-purged")
+    async with record_store.unit_of_work() as uow:
+        await record_store.insert_memory(uow, rec)
+    assert await record_store.soft_delete("u1", rec.id) is True
+    assert await record_store.purge("u1", rec.id) is True
+    assert await record_store.purge("u1", rec.id) is False
+
+
+async def test_purge_is_scoped_to_the_owner(record_store):
+    rec = _rec(content_hash="owned-by-u1")
+    async with record_store.unit_of_work() as uow:
+        await record_store.insert_memory(uow, rec)
+    assert await record_store.purge("u2", rec.id) is False
+    assert await record_store.fetch_by_ids("u1", [rec.id]) != []
+
+
 async def test_unit_of_work_rollback(record_store):
     rec = _rec(content_hash="rollback")
     try:

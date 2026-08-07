@@ -7,6 +7,7 @@ from era_memory.core.orchestration import (
     DETAIL_MEMORY,
     dual_write,
     dual_write_batch,
+    purge,
     soft_delete,
 )
 from era_memory.errors import DualWriteVectorError, VectorStoreWriteError
@@ -116,3 +117,31 @@ def _filters():
     from era_memory.models import SearchFilters
 
     return SearchFilters()
+
+
+class FailingDeleteVectorStore(InMemoryVectorStore):
+    async def delete(self, ids):
+        raise VectorStoreWriteError("simulated vector store down")
+
+
+async def test_purge_removes_record_and_vector():
+    rs, vs = InMemoryRecordStore(), InMemoryVectorStore()
+    stored, _ = await dual_write(rs, vs, _rec())
+    assert await purge(rs, vs, "u1", stored.id) is True
+    assert await rs.fetch_by_ids("u1", [stored.id]) == []
+
+
+async def test_purge_does_NOT_swallow_a_vector_failure():
+    # soft_delete may swallow: the record is archived, so search filters it out
+    # whatever happens to the vector. purge may not: the record is GONE, so a
+    # surviving vector is a dangling embedding of content we claimed to erase.
+    rs, vs = InMemoryRecordStore(), FailingDeleteVectorStore()
+    stored, _ = await dual_write(rs, vs, _rec())
+    with pytest.raises(VectorStoreWriteError):
+        await purge(rs, vs, "u1", stored.id)
+
+
+async def test_purge_of_an_unknown_id_touches_no_vector():
+    rs, vs = InMemoryRecordStore(), FailingDeleteVectorStore()
+    # Nothing to delete, so the (failing) vector leg must not even be attempted.
+    assert await purge(rs, vs, "u1", "no-such-id") is False
