@@ -60,7 +60,10 @@ See [`docs/PROGRESS.md`](docs/PROGRESS.md) for the milestone detail and
 
 **Published:** `era-memory` is on [PyPI](https://pypi.org/project/era-memory/) (`pip install
 era-memory`). The offline ONNX embedder is shipped (`era-memory setup`).
-**Not yet available:** Tier 2 (Milvus/vLLM/Redis) adapters.
+**Not yet available:** Tier 2 adapters. The Milvus/vLLM/Redis plan is superseded.
+**Next milestone (on hold):** parity with Era's internal memory service — see
+[`docs/HANDOVER-mneme-parity.md`](docs/HANDOVER-mneme-parity.md). Coding agents: start at
+[`AGENTS.md`](AGENTS.md).
 
 > **Deploying inside Era Labs Tools?** Start with
 > [`docs/HANDOVER-era-labs-tools.md`](docs/HANDOVER-era-labs-tools.md). Everyone else: see

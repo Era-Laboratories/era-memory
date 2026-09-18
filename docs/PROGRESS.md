@@ -109,4 +109,9 @@ returns the existing id + `deduplicated`; same-content-different-user is **not**
 ## ⏭ Next
 - **Deploy:** push the image to `era-labs-tools` (Cloud Run + Cloud SQL pgvector), point at a
   real embedding endpoint, set a real `MEMORY_BEARER_TOKEN`.
-- **M3:** Tier 2 — Milvus/vLLM/Redis adapters + the API-compatibility golden test vs era-core.
+- **M3 — SUPERSEDED, ON HOLD (2026-09-18).** The old plan was Tier 2 — Milvus/vLLM/Redis
+  adapters + the API-compatibility golden test vs era-core. Era's internal memory service
+  (Mneme) removed Milvus, so that plan cannot produce parity. Do not build it. The replacement
+  is a sealed-retrieval parity milestone. Read
+  [`HANDOVER-mneme-parity.md`](HANDOVER-mneme-parity.md) before any work: it holds the start
+  conditions, the owner decisions, five open requirements, and the order of work.
