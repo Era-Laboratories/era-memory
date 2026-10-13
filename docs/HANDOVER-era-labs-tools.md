@@ -66,7 +66,8 @@ extension) + **an embedding endpoint**.
    what gives real semantic quality (see §6, caveat #1).
 3. **Build & deploy the image** (`Dockerfile` in the repo root) to Cloud Run.
 4. **Set env** (section 5). At minimum: `MEMORY_TIER=1`, `MEMORY_PG_DSN`,
-   `MEMORY_BEARER_TOKEN`, `MEMORY_EMBEDDING_URL`, `MEMORY_EMBEDDING_DIMENSIONS`.
+   `MEMORY_BEARER_TOKEN`, `MEMORY_PRINCIPAL`, `MEMORY_EMBEDDING_URL`,
+   `MEMORY_EMBEDDING_DIMENSIONS`. The server refuses to start without the token and principal.
 5. **Connectivity**: use Cloud SQL private IP or the Cloud SQL connector; put the resulting
    DSN in `MEMORY_PG_DSN` (asyncpg format, e.g. `postgresql://user:pass@HOST:5432/db`).
 
@@ -75,7 +76,8 @@ To try the whole stack locally first: `docker compose up --build` (Postgres + AP
 ## 4. HTTP API contract
 
 All routes except `/health` and `/ready` require:
-`Authorization: Bearer <MEMORY_BEARER_TOKEN>` and `X-User-Id: <user>`.
+`Authorization: Bearer <MEMORY_BEARER_TOKEN>`. The request acts as `MEMORY_PRINCIPAL`;
+an `X-User-Id` header is ignored. A wrong or missing token returns `401`.
 
 | Method & path | Body | Returns |
 |---|---|---|
@@ -94,7 +96,8 @@ mirror era-core's so a future Tier-2 deployment can be API-compatible.
 | `MEMORY_TIER` | all | `0` (SQLite) or `1` (Postgres). The HTTP app supports 0/1. |
 | `MEMORY_PG_DSN` | 1 | asyncpg DSN for Cloud SQL. **Required at Tier 1.** |
 | `MEMORY_DB_PATH` | 0 | SQLite file path (Tier 0 only). |
-| `MEMORY_BEARER_TOKEN` | all | Static token clients must present. Set a real secret. |
+| `MEMORY_BEARER_TOKEN` | all | Static token clients must present. Set a real secret. **Required** — empty/unset fails startup. |
+| `MEMORY_PRINCIPAL` | all | The one owner (`user_id`) the token acts as. **Required** — empty/unset fails startup. Keep it stable: changing it orphans the rows stored under the old value. |
 | `MEMORY_EMBEDDING_URL` | 1 | OpenAI-compatible `/embeddings` base URL. Omit → dev hash embedder (NOT semantic). |
 | `MEMORY_EMBEDDING_MODEL` | 1 | Embedding model name sent to the endpoint. |
 | `MEMORY_EMBEDDING_DIMENSIONS` | all | Stored/indexed vector dim. **Must stay constant for a DB's life** (see §6). |
@@ -121,9 +124,9 @@ mirror era-core's so a future Tier-2 deployment can be API-compatible.
      larger models (e.g. a Qwen3 family model truncated to 2048) fit; just keep the dim ≤ 4000.
 
 3. **Auth is a static bearer token, not full JWT/Oathkeeper.** Fine for an internal tool
-   behind the org perimeter; do not treat it as end-user identity. `user_id` comes from the
-   `X-User-Id` header — your calling app is responsible for setting it correctly, since all
-   data is scoped (and isolated) by it.
+   behind the org perimeter; do not treat it as end-user identity. `user_id` is the configured
+   `MEMORY_PRINCIPAL` — the token stands for that one owner, and `X-User-Id` is ignored, so a
+   token holder cannot read or write another owner's data.
 
 ## 7. Status & limitations (be honest with your own roadmap)
 

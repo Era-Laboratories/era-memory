@@ -5,6 +5,11 @@ the app exists for standalone deployment (e.g. era-labs-tools Cloud Run / GKE).
 Needs the ``[server]`` extra. Routes mirror era-core's shapes so Tier 2 can stay
 API-compatible: POST /api/memories, POST /api/memories/search,
 DELETE /api/memories/{id}, GET /health, GET /ready.
+
+The HTTP server never runs unauthenticated. Startup fails unless the ``Memory`` carries a
+real ``Auth`` adapter: from env that means both ``MEMORY_BEARER_TOKEN`` and
+``MEMORY_PRINCIPAL`` are set; a prebuilt ``Memory`` must not still hold the library's
+in-process ``NoopAuth`` default.
 """
 
 from __future__ import annotations
@@ -16,6 +21,7 @@ from typing import Any, Optional
 from fastapi import Depends, FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from .adapters.memory import NoopAuth
 from .memory import Memory
 from .models import MemoryRecord, MemoryType, SearchFilters, SearchRequest, SearchStrategy
 
@@ -51,6 +57,7 @@ def create_app(memory: Optional[Memory] = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         if memory is not None:
+            _require_real_auth(memory)
             app.state.memory = memory
         else:
             app.state.memory = await _build_from_env()
@@ -171,12 +178,36 @@ def create_app(memory: Optional[Memory] = None) -> FastAPI:
     return app
 
 
+def _require_real_auth(memory: Memory) -> None:
+    """Refuse to serve HTTP with no auth or with the in-process ``NoopAuth`` default."""
+    if memory.auth is None or isinstance(memory.auth, NoopAuth):
+        raise RuntimeError(
+            "era-memory HTTP server refuses to start without authentication: "
+            "give the Memory a real Auth adapter (e.g. BearerAuth(token, principal))"
+        )
+
+
 async def _build_from_env() -> Memory:
     from .adapters.auth import BearerAuth
     from .wiring import build_memory, build_memory_async
 
+    # Validate auth config BEFORE opening any store, so a misconfigured pod fails fast
+    # and never serves a request.
+    token = os.environ.get("MEMORY_BEARER_TOKEN", "").strip()
+    principal = os.environ.get("MEMORY_PRINCIPAL", "").strip()
+    missing = [
+        name
+        for name, value in (("MEMORY_BEARER_TOKEN", token), ("MEMORY_PRINCIPAL", principal))
+        if not value
+    ]
+    if missing:
+        raise RuntimeError(
+            f"era-memory HTTP server refuses to start: {', '.join(missing)} must be set "
+            "and non-empty. MEMORY_BEARER_TOKEN is the credential clients present; "
+            "MEMORY_PRINCIPAL is the single owner that credential acts as."
+        )
+
     tier = int(os.environ.get("MEMORY_TIER", "0"))
-    token = os.environ.get("MEMORY_BEARER_TOKEN")
     embedder = _embedder_from_env()
 
     if tier == 0:
@@ -188,8 +219,7 @@ async def _build_from_env() -> Memory:
     else:
         raise RuntimeError(f"unsupported MEMORY_TIER for HTTP app: {tier}")
 
-    if token:
-        mem.auth = BearerAuth(token)
+    mem.auth = BearerAuth(token, principal)
     return mem
 
 

@@ -25,6 +25,8 @@ services:
       MEMORY_TIER: "1"
       MEMORY_PG_DSN: "postgresql://postgres:era@postgres:5432/era"
       MEMORY_BEARER_TOKEN: "change-me"
+      # The one owner the token acts as. Required: the server refuses to start without it.
+      MEMORY_PRINCIPAL: "u1"
       # Point at any OpenAI-compatible embedding endpoint (a vLLM/GPU service on
       # era-labs-tools, OpenAI, LiteLLM, Ollama's shim). Omit to use the dev hash embedder.
       # MEMORY_EMBEDDING_URL: "http://embeddings:8000/v1"

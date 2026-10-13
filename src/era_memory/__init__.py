@@ -27,7 +27,7 @@ from .models import (
 )
 from .wiring import build_memory, build_memory_async
 
-__version__ = "0.1.0"
+__version__ = "0.1.4"
 
 __all__ = [
     "Settings",
