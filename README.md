@@ -126,14 +126,16 @@ docker compose up --build          # Postgres+pgvector + the HTTP API on :8080
 
 ```bash
 TOKEN="change-me"
-curl -s -H "Authorization: Bearer $TOKEN" -H "X-User-Id: u1" -H "Content-Type: application/json" \
+curl -s -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -X POST localhost:8080/api/memories -d '{"content":"Ada prefers dark roast coffee"}'
 
-curl -s -H "Authorization: Bearer $TOKEN" -H "X-User-Id: u1" -H "Content-Type: application/json" \
+curl -s -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -X POST localhost:8080/api/memories/search -d '{"query":"coffee"}'
 ```
 
-HTTP routes: `GET /health`, `GET /ready`, `POST /api/memories`, `POST /api/memories/search`.
+HTTP routes: `GET /health`, `GET /ready`, `POST /api/memories`, `POST /api/memories/search`,
+`DELETE /api/memories/{id}`. The server refuses to start unless `MEMORY_BEARER_TOKEN` and
+`MEMORY_PRINCIPAL` are both set: the token acts as that one owner, and `X-User-Id` is ignored.
 Configure via env — see [`docs/HANDOVER-era-labs-tools.md`](docs/HANDOVER-era-labs-tools.md).
 
 ## Architecture in one paragraph

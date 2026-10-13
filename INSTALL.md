@@ -159,7 +159,8 @@ Configure via environment variables:
 |----------|----------|---------|
 | `MEMORY_TIER` | yes (`1`) | Selects the Postgres+HTTP adapter set |
 | `MEMORY_PG_DSN` | yes | `postgresql://user:pass@host:5432/db` (needs pgvector ≥ 0.7 for `halfvec`) |
-| `MEMORY_BEARER_TOKEN` | yes | Static bearer token clients must send as `Authorization: Bearer …` |
+| `MEMORY_BEARER_TOKEN` | yes | Static bearer token clients must send as `Authorization: Bearer …`. Empty/unset → the server refuses to start |
+| `MEMORY_PRINCIPAL` | yes | The single owner (`user_id`) the token acts as. Every request with the token reads and writes as this owner. Empty/unset → the server refuses to start |
 | `MEMORY_EMBEDDING_URL` | for real search | OpenAI-compatible `/embeddings` base URL; omit → non-semantic dev embedder |
 | `MEMORY_EMBEDDING_MODEL` | with URL | Model name sent to the endpoint |
 | `MEMORY_EMBEDDING_DIMENSIONS` | with URL | Output dim; must match the model and stay constant for the DB's life |
@@ -177,15 +178,16 @@ different `experience_id` still collapses onto the first record.
 
 ```bash
 TOKEN="change-me"
-curl -s -H "Authorization: Bearer $TOKEN" -H "X-User-Id: u1" -H "Content-Type: application/json" \
+curl -s -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -X POST localhost:8080/api/memories -d '{"content":"Ada prefers dark roast coffee"}'
-curl -s -H "Authorization: Bearer $TOKEN" -H "X-User-Id: u1" -H "Content-Type: application/json" \
+curl -s -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -X POST localhost:8080/api/memories/search -d '{"query":"coffee"}'
 ```
 
-> `user_id` comes from the `X-User-Id` header and scopes/isolates all data — your calling app
-> sets it. The bearer token is a single shared secret, not per-user identity; put the service
-> behind your own auth/perimeter for multi-tenant production use.
+> `user_id` is `MEMORY_PRINCIPAL`: the token is a credential for exactly that one owner.
+> Client-supplied identity headers (`X-User-Id`) are ignored, so a token holder cannot pick
+> another owner. To serve several owners, run one deployment (or one token/principal pair)
+> per owner, or put a real per-user `Auth` adapter in front.
 
 ## 8. Troubleshooting
 

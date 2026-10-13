@@ -135,7 +135,7 @@ One knob: `MEMORY_TIER ∈ {0,1,2}` (or per-port overrides). Each tier was indep
 | Extractor | OpenAI-compatible chat-completions + JSON schema (default); TensorZero opt-in |
 | BlobStore | Local filesystem (session content lives in Postgres) |
 | KMS | `local` provider (existing default) |
-| Auth | static bearer token + `X-User-Id` |
+| Auth | static bearer token bound to one configured owner (`MEMORY_PRINCIPAL`); `X-User-Id` ignored |
 | Telemetry | OTel/Pyroscope off by default (empty endpoint = disabled) |
 
 **The one hard blocker — embedding dimension vs pgvector index cap:**

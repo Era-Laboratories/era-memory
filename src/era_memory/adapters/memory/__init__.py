@@ -295,13 +295,17 @@ class LocalKMS(KMS):
 
 
 class NoopAuth(Auth):
-    """Single-user / trusted-caller: returns X-User-Id header or a default."""
+    """In-process / library default: every caller is ``default_user``.
+
+    Never trusts request headers. The HTTP app refuses to start with this adapter
+    (see ``era_memory.app``), so it only ever serves in-process use.
+    """
 
     def __init__(self, default_user: str = "local") -> None:
         self._default = default_user
 
     async def authenticate(self, headers):
-        return headers.get("X-User-Id", self._default)
+        return self._default
 
 
 # ---------------------------------------------------------------------------- Telemetry

@@ -39,9 +39,10 @@ Please include:
 A few things are deployment responsibilities rather than library vulnerabilities — useful to
 know before reporting:
 
-- **Tier 1 bearer-token auth** is a single shared secret, not per-user identity. `user_id` comes
-  from the `X-User-Id` header and the calling app is responsible for setting it; put the service
-  behind your own perimeter for multi-tenant use.
+- **Tier 1 bearer-token auth** is a single shared secret bound to one owner, `MEMORY_PRINCIPAL`.
+  Every request with the token acts as that owner; `X-User-Id` is ignored. The HTTP server refuses
+  to start without both the token and the principal. It is not per-user identity — for
+  multi-tenant use, run one token/principal pair per owner or add a real per-user `Auth` adapter.
 - **Embedding/HTTP endpoints** you configure (`MEMORY_EMBEDDING_URL`, DSNs, tokens) and the
   secrets for them are managed by you — keep them out of source control.
 
